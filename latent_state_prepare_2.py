@@ -2,15 +2,12 @@ import math
 import torch as tc
 from FUN import TTD
 from torch import optim
-from FUN.orthogonalization import orthogonalization, full_tensor
-from Library.MatrixProductState import inner_product
+from FUN.orthogonalization import orthogonalization, full_tensor, inner_product
+# from Library.MatrixProductState import inner_product
 import numpy as np
 from Library.QuantumState import state_ghz
-from test import remove_small
 from FUN.TEBD2 import U_tensor, time_envolve
-
-
-
+import matplotlib.pyplot as plt
 
 
 def latent_to_unitary(latent_paras):
@@ -19,7 +16,6 @@ def latent_to_unitary(latent_paras):
     P, _, Q_dagger = tc.linalg.svd(latent_matrix, full_matrices=True)
     unitary_gate = P.mm(Q_dagger).reshape(2, 2, 2, 2)
     return unitary_gate
-
 
 
 def act_on_state(state, gate, left_to_right=True, vd = None):
@@ -32,14 +28,6 @@ def act_on_state(state, gate, left_to_right=True, vd = None):
             lm = tc.tensor([i for i in lm if i >= 1e-15])
             lm_ = tc.diag(lm.to(dtype=dtype))
             u, v_dagger = u[:, :len(lm)].to(dtype=dtype), v_dagger[:len(lm), :].to(dtype=dtype)
-            # u, v_dagger = remove_small(u), remove_small(v_dagger)
-            num_rand = tc.rand(1)
-            if num_rand > 0.5:
-                u, v_dagger = u + tc.tensor(eps + eps * 1j), v_dagger + tc.tensor(eps + eps * 1j)
-            else:
-                u, v_dagger = u - tc.tensor(eps + eps * 1j), v_dagger - tc.tensor(eps + eps * 1j)
-            # u, v_dagger = u + tc.tensor(eps + eps * 1j), v_dagger + tc.tensor(eps + eps * 1j)
-
             if vd != None:
                 d = min(vd, len(lm))
                 lm = lm[:d]
@@ -59,12 +47,6 @@ def act_on_state(state, gate, left_to_right=True, vd = None):
             lm = tc.tensor([i for i in lm if i >= 1e-15])
             lm_ = tc.diag(lm.to(dtype=dtype))
             u, v_dagger = u[:, :len(lm)].to(dtype=dtype), v_dagger[:len(lm), :].to(dtype=dtype)
-            # u, v_dagger = remove_small(u), remove_small(v_dagger)
-            num_rand = tc.rand(1)
-            if num_rand > 0.5:
-                u, v_dagger = u + tc.tensor(eps + eps * 1j), v_dagger + tc.tensor(eps + eps * 1j)
-            else:
-                u, v_dagger = u - tc.tensor(eps + eps * 1j), v_dagger - tc.tensor(eps + eps * 1j)
             if vd != None:
                 d = min(vd, len(lm))
                 lm = lm[:d]
@@ -81,9 +63,7 @@ def act_on_state(state, gate, left_to_right=True, vd = None):
 
 
 def latent_initial_paras(gate_num):
-    unit_matrix = np.eye(4) + 1e-05 * np.random.randn(4, 4)
-    unit_matrix = tc.from_numpy(unit_matrix)
-    stack_array = np.stack([unit_matrix for _ in range(gate_num)])
+    stack_array = np.stack([(np.eye(4) + 1e-05 * np.random.randn(4, 4)) for _ in range(gate_num)])
     return stack_array
 
 
@@ -100,32 +80,20 @@ eps = 1e-6
 vd = 8
 nq = 16
 d = 2
-# seed = 42
-# tc.manual_seed(seed)
-# psi_target = tc.randn([d] * nq, dtype=dtype)
-# tc.seed()
-# psi_target /= psi_target.norm()
-# psi = TTD.TT_Decomposition(psi_target)
-# print('生成目标态')
 '''生成目标态'''
-psi = [tc.randn(1, d, 3, dtype=tc.complex128)] + [tc.randn(3, d, 3, dtype=tc.complex128) for _ in range(nq - 2)] +\
-      [tc.randn(3, d, 1, dtype=tc.complex128)]
+psi = [tc.randn(1, d, 3, dtype=dtype)] + [tc.randn(3, d, 3, dtype=dtype) for _ in range(nq - 2)] +\
+      [tc.randn(3, d, 1, dtype=dtype)]
 t, tau_ = 1000, 1
 err = 1
-layers = 0
 while err > 1e-6:
     a = full_tensor(psi)
     U_tau, tau = U_tensor(tau_, Jx=1, Jy=1, Jz=0, if_i=False)  # 建立虚时演化算符和虚时间演化算符切片（Jx， Jy， Jz）
-    layers = time_envolve(t, tau, U_tau, psi)  # 进行虚时演化，得到基态
-    layers += layers
-    # time_envolve(t, tau, U_tau, phi)  # 进行虚时演化，得到基态, 不裁剪
+    time_envolve(t, tau, U_tau, psi)  # 进行虚时演化，得到基态
     b = full_tensor(psi)
     t /= 10
     tau_ /= 10
     err = ((a - b).norm().item()) / a.norm().item()
-    # print('相对误差:', err)
-ground_state1, psi_target = tc.squeeze(b), psi
-print(psi)
+
 print('################    收敛，得到基态波函数     ####################')
 '''生成初态'''
 phi_initial = state_ghz(nq).to(dtype=dtype)
@@ -146,7 +114,6 @@ for n_layers in range(layers):
     if n_layers == 0:
         '''不同的初始化方案'''
         var_paras = tc.randn(gate_num, 16, dtype=dtype, requires_grad=True)
-
     else:
         var_paras = tc.tensor(latent_initial_paras(gate_num), dtype=dtype, requires_grad=True)
 
@@ -162,9 +129,9 @@ for n_layers in range(layers):
             gates[n] = latent_to_unitary(var_paras[n, :])
         '''将量子门作用到量子态上'''
         # original_state = act_on_state(state=original_state, gate=gates, left_to_right=((n_layers % 2) == 0))
-        original_state = act_on_state(state=original_state, gate=gates, left_to_right=((n_layers % 2) == 0), vd=vd)
+        original_state = act_on_state(state=original_state, gate=gates, left_to_right=((n_layers % 2) == 0))
         '''构建loss'''
-        loss = - inner_product(psi, original_state) / nq
+        loss = - tc.log(inner_product(psi, original_state)) / nq
         loss.backward(retain_graph=True)
         optimizer.step()
         optimizer.zero_grad()
@@ -174,6 +141,10 @@ for n_layers in range(layers):
                   math.exp(-loss * nq))
 
         loss_list.append(loss.item())
+
+    plt.plot(loss_list, 'r-o')
+    # plt.title('第%d层量子门' % (n_layers + 1))
+    plt.show()
     # disable_gradient_tracking(var_paras)
     phi = original_state
     '''将生成的门保存下来'''
@@ -188,9 +159,9 @@ for n_layers in range(layers):
             original_state_ = [tensor_.clone() for tensor_ in phi_]
             for m in range(n+1):
                 act_on_state(state=original_state_, gate=gates_history[m],
-                                              left_to_right=((n % 2) == 0), vd=vd)
+                                              left_to_right=((n % 2) == 0))
             '''构建loss'''
-            loss_1 = - inner_product(psi, original_state_) / nq
+            loss_1 = - tc.log(inner_product(psi, original_state_)) / nq
             loss_1.backward(retain_graph=True)
             optimizer_1.step()
             optimizer_1.zero_grad()
@@ -199,7 +170,9 @@ for n_layers in range(layers):
                 print('共%d层, 重新优化第%d层量子门, 第%d次迭代, loss=' % ((n_layers + 1), (n + 1), (num + 1)),
                       loss_1.item(), '保真度：', math.exp(-loss_1 * nq))
             loss_list.append(loss_1.item())
+        plt.plot(loss_list, 'r-o')
+        # plt.title('共%d层，重新优化第%d层量子门' % ((n_layers + 1), (n + 1)))
+        plt.show()
+
         phi = original_state_
     # phi = original_state_
-
-

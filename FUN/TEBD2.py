@@ -4,22 +4,23 @@ from Library.MathFun import pauli_operators
 
 op = pauli_operators()
 
+dtype = tc.complex128
 
 def U_ij_matrix(tau, if_i, Jx=1, Jy=1, Jz=1):  # tau即时间切片大小, 得到直积表象下的矩阵形式
     H_ij = Jx * tc.kron(op['x'], op['x']) + \
            Jy * tc.kron(op['y'], op['y']) + \
            Jz * tc.kron(op['z'], op['z'])
     if if_i:  # 时间演化算符
-        U_ij = tc.matrix_exp(complex(0, -1) * tau * H_ij)
+        U_ij = tc.matrix_exp(-1j * tau * H_ij)
     else:  # 有限温度密度矩阵算符（对应虚时演化）
-        U_ij = tc.matrix_exp(complex(-1, 0) * tau * H_ij)
+        U_ij = tc.matrix_exp(-1 * tau * H_ij)
     return U_ij
 
 
 def U_tensor(tau, Jx, Jy, Jz, if_i):  # 得到时间演化算符切片的张量形式
-    base = [tc.tensor([1, 0], dtype=tc.complex128), tc.tensor([0, 1], dtype=tc.complex128)]
+    base = [tc.tensor([1, 0], dtype=dtype), tc.tensor([0, 1], dtype=dtype)]
     U_ij = U_ij_matrix(tau, if_i, Jx, Jy, Jz)
-    U = tc.zeros(2, 2, 2, 2, dtype=tc.complex128)
+    U = tc.zeros(2, 2, 2, 2, dtype=dtype)
     for i in range(2):
         for j in range(2):
             for a in range(2):
@@ -36,17 +37,13 @@ def left_right(U_tau, psi):  # 时间演化算符切片从左向右按阶梯式�
         B = tc.einsum('ijst, asb, btd -> aijd', U_tau, psi[i], psi[i + 1])  # 缩并得到四阶张量
         B_ = B.reshape(psi[i].shape[0] * psi[i].shape[1], -1)  # 矩阵化
         u, lm, v_dagger = tc.linalg.svd(B_, full_matrices=False)  # 进行SVD分解
-
-
         lm = tc.tensor([i for i in lm if i != 0])
-
-
-        lm_= tc.diag(lm).to(dtype=tc.complex128)
-        u, v_dagger = u[:, :len(lm)].to(dtype=tc.complex128), v_dagger[:len(lm), :].to(dtype=tc.complex128)
+        lm_= tc.diag(lm).to(dtype=dtype)
+        u, v_dagger = u[:, :len(lm)].to(dtype=dtype), v_dagger[:len(lm), :].to(dtype=dtype)
         if vd_ != None:
             d = min(vd_, len(lm))
             lm = lm[:d]
-            lm_ = tc.diag(lm).to(dtype=tc.complex128)
+            lm_ = tc.diag(lm).to(dtype=dtype)
             psi[i] = u[:, :d].reshape(psi[i].shape[0], psi[i].shape[1], d)  # u替代原来的左等距矩阵
             psi[i + 1] = lm_.mm(v_dagger[:d, :]).reshape(d, psi[i + 1].shape[1], psi[i + 1].shape[2])
             psi[i + 1] /= psi[i + 1].norm()
@@ -62,17 +59,15 @@ def right_left(U_tau, psi):  # 时间演化算符切片从右向左按阶梯式�
         B = tc.einsum('ijst, asb, btd -> aijd', U_tau, psi[i - 1], psi[i])
         B_ = B.reshape(psi[i - 1].shape[0] * psi[i -1].shape[1], -1)
         u, lm, v_dagger = tc.linalg.svd(B_, full_matrices=False)
-
-
         lm = tc.tensor([i for i in lm if i != 0])
 
 
-        lm_ = tc.diag(lm).to(dtype=tc.complex128)
-        u, v_dagger = u[:, :len(lm)].to(dtype=tc.complex128), v_dagger[:len(lm), :].to(dtype=tc.complex128)
+        lm_ = tc.diag(lm).to(dtype=dtype)
+        u, v_dagger = u[:, :len(lm)].to(dtype=dtype), v_dagger[:len(lm), :].to(dtype=dtype)
         if vd_ != None:
             d = min(vd_, len(lm))
             lm = lm[:d]
-            lm_ = tc.diag(lm).to(dtype=tc.complex128)
+            lm_ = tc.diag(lm).to(dtype=dtype)
             psi[i] = v_dagger[:d, :].reshape(d, psi[i].shape[1], psi[i].shape[2])
             psi[i - 1] = u[:, :d].mm(lm_).reshape(psi[i - 1].shape[0], psi[i - 1].shape[1], d)
             psi[i - 1] /= psi[i - 1].norm()

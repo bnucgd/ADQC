@@ -80,6 +80,24 @@ def full_tensor(psi):  # 输入一个MPS
         full_tensor = tc.tensordot(full_tensor, tensor, [[-1], [0]])
     return full_tensor
 
+
+
+def inner_product(tensor0, tensor1):
+    '''输入两个MPS，计算其内积'''
+    assert len(tensor0) == len(tensor1)
+    length = len(tensor0)
+    assert type(tensor0) == type(tensor1)
+    tensor_list = [None for _ in range(length)]
+    for i in range(length):
+        tensor_list[i] = tc.einsum('abc, dbe -> adce', tensor0[i].conj(), tensor1[i])
+    res_tensor = tensor_list[0]
+    for j in range(1, length):
+        res_tensor = tc.einsum('abcd, cdef -> abef', res_tensor, tensor_list[j])
+    if res_tensor.numel() > 1:
+        res = tc.einsum('acac ->', res_tensor)
+    else:
+        res = tc.squeeze(res_tensor)
+    return res.norm()
 # length = 16  # MPS的长度
 # phi = [tc.randn(1, 2, 3, dtype=tc.complex128)] + [tc.randn(3, 2, 3, dtype=tc.complex128) for _ in range(length - 2)] \
 #       + [tc.randn(3, 2, 1, dtype=tc.complex128)]
